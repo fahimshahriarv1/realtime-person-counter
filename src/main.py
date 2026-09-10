@@ -42,8 +42,8 @@ READ_FAILURE_TOLERANCE = 8         # consecutive bad reads before declaring "dis
 PLACEHOLDER_SIZE = (860, 540)
 
 ALERT_OFF = "Off"
-ALERT_WATCHED_ARRIVES = "Watched person appears"
-ALERT_OTHER_ARRIVES = "Someone else appears"
+ALERT_WATCHED_ARRIVES = "Watched person(s) appear"
+ALERT_OTHER_ARRIVES = "Anyone not watched appears"
 ALERT_MODES = [ALERT_OFF, ALERT_WATCHED_ARRIVES, ALERT_OTHER_ARRIVES]
 
 
@@ -126,12 +126,17 @@ class PersonCounterApp:
         notif_frame = ttk.LabelFrame(side, text="Notifications", padding=8)
         notif_frame.pack(fill=tk.X, pady=(0, 8))
 
-        ttk.Label(notif_frame, text="Watched person:").pack(anchor="w")
-        self.watched_person_var = tk.StringVar(value="")
-        self.watched_person_combo = ttk.Combobox(
-            notif_frame, textvariable=self.watched_person_var, values=[], state="readonly"
+        ttk.Label(notif_frame, text="Watched person(s):").pack(anchor="w")
+        self.watched_listbox = tk.Listbox(
+            notif_frame, selectmode=tk.EXTENDED, exportselection=False, height=5
         )
-        self.watched_person_combo.pack(fill=tk.X, pady=(2, 8))
+        self.watched_listbox.pack(fill=tk.X, pady=(2, 2))
+        ttk.Label(
+            notif_frame,
+            text="Ctrl/Shift-click to pick one or more people.",
+            foreground="#555555",
+            font=("Segoe UI", 8),
+        ).pack(anchor="w", pady=(0, 8))
 
         ttk.Label(notif_frame, text="Alert me when:").pack(anchor="w")
         self.alert_mode_var = tk.StringVar(value=ALERT_OFF)
@@ -174,10 +179,17 @@ class PersonCounterApp:
         self.attempt_connect(reset_status_on_fail=True)
 
     def _refresh_watched_person_options(self):
+        previously_selected = set(self._get_watched_names())
         names = sorted(set(self.engine.labels.values()))
-        self.watched_person_combo.configure(values=names)
-        if self.watched_person_var.get() not in names and names:
-            self.watched_person_var.set(names[0])
+
+        self.watched_listbox.delete(0, tk.END)
+        for name in names:
+            self.watched_listbox.insert(tk.END, name)
+            if name in previously_selected:
+                self.watched_listbox.selection_set(tk.END)
+
+    def _get_watched_names(self):
+        return {self.watched_listbox.get(i) for i in self.watched_listbox.curselection()}
 
     def send_test_notification(self):
         notify("Realtime Person Counter", "Notifications are working.")
@@ -190,15 +202,15 @@ class PersonCounterApp:
         state.notified = True
 
         mode = self.alert_mode_var.get()
-        watched = self.watched_person_var.get().strip()
+        watched = self._get_watched_names()
         if mode == ALERT_OFF or not watched:
             return
 
         if mode == ALERT_WATCHED_ARRIVES:
-            if state.name == watched:
-                notify("Person detected", f"{watched} has entered the room.")
+            if state.name in watched:
+                notify("Person detected", f"{state.name} has entered the room.")
         elif mode == ALERT_OTHER_ARRIVES:
-            if state.name != watched:
+            if state.name not in watched:
                 who = state.name if state.name else "An unrecognized person"
                 notify("Unexpected person detected", f"{who} has entered the room.")
 
