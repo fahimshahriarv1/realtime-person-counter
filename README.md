@@ -20,6 +20,15 @@ even across app restarts.
   the spot; skip it and that face is labeled "Unnamed" for the session.
 - **GUI**: Tkinter, showing the live annotated video feed, a running count
   of people currently visible, and a list of who's currently in frame.
+- **Camera failsafe**: if no webcam is found (or it's a different device
+  index), the app shows a status placeholder and retries every couple of
+  seconds instead of crashing — same recovery path if the camera drops out
+  mid-session. There's also a manual "Retry camera now" button.
+- **Notifications**: a Windows toast notification can fire when a specific
+  "watched" person enters the room, or when anyone *other than* that person
+  enters (an intruder-style alert). Uses the built-in Windows toast API via
+  a bundled PowerShell script (`assets/toast.ps1`) — no extra pip package,
+  so nothing to break on newer Python versions lacking prebuilt wheels.
 
 ## Setup
 
@@ -40,11 +49,18 @@ popup asks for their name — type it and press OK. That person is now
 remembered (face images + trained model are stored under `data/`, which is
 git-ignored since it's personal biometric data specific to your machine).
 
+In the side panel, pick a **Watched person** and an **Alert me when**
+mode ("Watched person appears" or "Someone else appears"), or use
+"Send test notification" to confirm toasts are showing up on your machine.
+
 ## Notes & limitations
 
 - Recognition accuracy from a small number of training samples under
   varying light is modest — it's built for the "who's in my room right
   now" use case, not access control.
-- One webcam is used at a time (`cv2.VideoCapture(0)`).
+- One webcam is used at a time, tried across a few device indices
+  (`0`, `1`, `2`) on connect/reconnect.
 - `data/` (trained faces and model) is excluded from version control by
   design; each installation builds its own local roster of named people.
+- Notifications are Windows-only (they no-op elsewhere); everything else
+  runs cross-platform.

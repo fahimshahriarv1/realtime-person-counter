@@ -26,6 +26,7 @@ from PIL import Image, ImageDraw, ImageTk
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from face_engine import FaceEngine  # noqa: E402
 from tracker import CentroidTracker  # noqa: E402
+from notifications import notify  # noqa: E402
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -40,6 +41,11 @@ CAMERA_RETRY_MS = 2000             # how often to retry when no camera is connec
 READ_FAILURE_TOLERANCE = 8         # consecutive bad reads before declaring "disconnected"
 PLACEHOLDER_SIZE = (860, 540)
 
+ALERT_OFF = "Off"
+ALERT_WATCHED_ARRIVES = "Watched person appears"
+ALERT_OTHER_ARRIVES = "Someone else appears"
+ALERT_MODES = [ALERT_OFF, ALERT_WATCHED_ARRIVES, ALERT_OTHER_ARRIVES]
+
 
 class TrackState:
     def __init__(self):
@@ -47,6 +53,7 @@ class TrackState:
         self.unknown_frames = 0
         self.prompted = False
         self.skipped = False
+        self.notified = False
         self.buffer = deque(maxlen=BUFFER_SIZE)
 
 
@@ -114,8 +121,33 @@ class PersonCounterApp:
             foreground="#555555",
             wraplength=240,
             justify="left",
-        ).pack(anchor="w")
+        ).pack(anchor="w", pady=(0, 12))
 
+        notif_frame = ttk.LabelFrame(side, text="Notifications", padding=8)
+        notif_frame.pack(fill=tk.X, pady=(0, 8))
+
+        ttk.Label(notif_frame, text="Watched person:").pack(anchor="w")
+        self.watched_person_var = tk.StringVar(value="")
+        self.watched_person_combo = ttk.Combobox(
+            notif_frame, textvariable=self.watched_person_var, values=[], state="readonly"
+        )
+        self.watched_person_combo.pack(fill=tk.X, pady=(2, 8))
+
+        ttk.Label(notif_frame, text="Alert me when:").pack(anchor="w")
+        self.alert_mode_var = tk.StringVar(value=ALERT_OFF)
+        self.alert_mode_combo = ttk.Combobox(
+            notif_frame,
+            textvariable=self.alert_mode_var,
+            values=ALERT_MODES,
+            state="readonly",
+        )
+        self.alert_mode_combo.pack(fill=tk.X, pady=(2, 8))
+
+        ttk.Button(
+            notif_frame, text="Send test notification", command=self.send_test_notification
+        ).pack(fill=tk.X)
+
+        self._refresh_watched_person_options()
         self._show_placeholder("Connecting to camera...")
 
     def _show_placeholder(self, message):
@@ -140,6 +172,35 @@ class PersonCounterApp:
     def retry_now(self):
         self.reconnect_elapsed_ms = 0
         self.attempt_connect(reset_status_on_fail=True)
+
+    def _refresh_watched_person_options(self):
+        names = sorted(set(self.engine.labels.values()))
+        self.watched_person_combo.configure(values=names)
+        if self.watched_person_var.get() not in names and names:
+            self.watched_person_var.set(names[0])
+
+    def send_test_notification(self):
+        notify("Realtime Person Counter", "Notifications are working.")
+
+    def maybe_notify(self, state):
+        """Edge-triggered alert: fires once per track, the moment its
+        identity is resolved (recognized, freshly named, or left unnamed)."""
+        if state.notified:
+            return
+        state.notified = True
+
+        mode = self.alert_mode_var.get()
+        watched = self.watched_person_var.get().strip()
+        if mode == ALERT_OFF or not watched:
+            return
+
+        if mode == ALERT_WATCHED_ARRIVES:
+            if state.name == watched:
+                notify("Person detected", f"{watched} has entered the room.")
+        elif mode == ALERT_OTHER_ARRIVES:
+            if state.name != watched:
+                who = state.name if state.name else "An unrecognized person"
+                notify("Unexpected person detected", f"{who} has entered the room.")
 
     def attempt_connect(self, reset_status_on_fail=False):
         """Try each known camera index once. Returns True on success."""
@@ -176,6 +237,7 @@ class PersonCounterApp:
         if name and name.strip():
             self.engine.add_person(name.strip(), list(state.buffer))
             state.name = name.strip()
+            self._refresh_watched_person_options()
         else:
             state.skipped = True
         state.buffer.clear()
@@ -235,6 +297,9 @@ class PersonCounterApp:
                     if state.unknown_frames >= STABILITY_FRAMES and not state.prompted:
                         state.prompted = True
                         self.prompt_for_name(state)
+
+            if state.name or state.skipped:
+                self.maybe_notify(state)
 
             if state.name:
                 label = state.name
