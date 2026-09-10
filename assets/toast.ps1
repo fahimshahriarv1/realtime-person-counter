@@ -27,4 +27,9 @@ $template = @"
 $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
 $xml.LoadXml($template)
 $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("PowerShell").Show($toast)
+
+# Windows silently drops toasts from a sender name that isn't a real
+# registered app identity (no error -- it just never appears). This is
+# powershell.exe's actual AUMID, as reported by `Get-StartApps`.
+$powerShellAumid = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($powerShellAumid).Show($toast)
