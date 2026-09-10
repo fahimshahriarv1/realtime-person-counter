@@ -78,6 +78,40 @@ class PersonCounterApp:
         self.attempt_connect(reset_status_on_fail=True)
         self.root.after(FRAME_INTERVAL_MS, self.update_frame)
 
+    def _build_scrollable_side(self, parent):
+        """Side panel wrapped in a canvas+scrollbar so its content (which can
+        exceed the window's height once shrunk) stays reachable by scrolling
+        instead of being clipped."""
+        container = ttk.Frame(parent, width=260)
+        container.pack(side=tk.RIGHT, fill=tk.Y)
+        container.pack_propagate(False)
+
+        canvas = tk.Canvas(container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        inner = ttk.Frame(canvas, padding=(12, 0, 0, 0))
+        inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        def sync_scrollregion(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def sync_inner_width(event):
+            canvas.itemconfig(inner_window, width=event.width)
+
+        inner.bind("<Configure>", sync_scrollregion)
+        canvas.bind("<Configure>", sync_inner_width)
+
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", on_mousewheel))
+        canvas.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
+
+        return inner
+
     def _build_ui(self):
         main = ttk.Frame(self.root, padding=8)
         main.pack(fill=tk.BOTH, expand=True)
@@ -87,8 +121,7 @@ class PersonCounterApp:
         self.video_label = ttk.Label(video_frame)
         self.video_label.pack(fill=tk.BOTH, expand=True)
 
-        side = ttk.Frame(main, width=260, padding=(12, 0, 0, 0))
-        side.pack(side=tk.RIGHT, fill=tk.Y)
+        side = self._build_scrollable_side(main)
 
         self.status_var = tk.StringVar(value="Connecting to camera...")
         self.status_label = ttk.Label(
