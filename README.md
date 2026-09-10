@@ -33,6 +33,11 @@ even across app restarts.
   and Linux's `notify-send` (from libnotify, present on most desktop
   environments). This avoids depending on a notification library that
   might lack prebuilt wheels on newer Python versions.
+- **Tuning**: a "Detection & Recognition Tuning" panel with live sliders
+  for the four knobs that most affect accuracy — detection strictness,
+  minimum face size, recognition strictness, and scan detail (see
+  Tuning below). Changes apply immediately and persist across restarts
+  (`data/settings.json`); a "Reset to defaults" button is included.
 
 ## Setup
 
@@ -82,6 +87,22 @@ In the side panel, Ctrl/Shift-click to pick one or more people under
 Use "Send test notification" any time to confirm toasts are showing up on
 your machine.
 
+## Tuning
+
+If the app is missing real faces, mistaking objects for faces, or mixing
+people up, adjust the sliders in **Detection & Recognition Tuning**:
+
+| Slider | Raise it when... | Lower it when... |
+| --- | --- | --- |
+| Detection strictness | non-face objects keep getting boxed as a person | real faces at an angle aren't being detected |
+| Minimum face size | small/distant background blobs are triggering false detections | people further from the camera aren't being picked up |
+| Recognition strictness | two people keep getting mixed up | a known person keeps getting treated as a new/unrecognized face |
+| Detection scan detail | detection needs to run faster (fewer scan steps) | faces are being missed and speed isn't a concern (finer-grained scan) |
+
+Values apply live as you drag and are saved automatically once you release
+the slider, so you can tune while watching the video feed react in real
+time. "Reset to defaults" restores the original values.
+
 ## Notes & limitations
 
 - Recognition accuracy from a small number of training samples under
@@ -89,8 +110,9 @@ your machine.
   now" use case, not access control.
 - One webcam is used at a time, tried across a few device indices
   (`0`, `1`, `2`) on connect/reconnect.
-- `data/` (trained faces and model) is excluded from version control by
-  design; each installation builds its own local roster of named people.
+- `data/` (trained faces, model, and tuning settings) is excluded from
+  version control by design; each installation builds its own local
+  roster of named people and tuning.
 - Notifications silently no-op if the platform's notifier isn't available
   (e.g. a minimal Linux install without `notify-send`) rather than
   erroring — the rest of the app is unaffected.
