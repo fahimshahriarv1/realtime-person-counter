@@ -24,17 +24,20 @@ even across app restarts.
   index), the app shows a status placeholder and retries every couple of
   seconds instead of crashing — same recovery path if the camera drops out
   mid-session. There's also a manual "Retry camera now" button.
-- **Notifications**: a Windows toast notification can fire when a specific
+- **Notifications**: a native desktop notification can fire when a specific
   "watched" person enters the room, or when anyone *other than* that person
-  enters (an intruder-style alert). Uses the built-in Windows toast API via
-  a bundled PowerShell script (`assets/toast.ps1`) — no extra pip package,
-  so nothing to break on newer Python versions lacking prebuilt wheels.
+  enters (an intruder-style alert). Cross-platform with no extra pip
+  package — each OS's own notifier is used directly: Windows' toast API via
+  a bundled PowerShell script (`assets/toast.ps1`), macOS's `osascript`,
+  and Linux's `notify-send` (from libnotify, present on most desktop
+  environments). This avoids depending on a notification library that
+  might lack prebuilt wheels on newer Python versions.
 
 ## Setup
 
 ```
 python -m venv .venv
-.venv\Scripts\activate       # Windows
+.venv\Scripts\activate       # Windows; use `source .venv/bin/activate` on macOS/Linux
 pip install -r requirements.txt
 ```
 
@@ -62,5 +65,6 @@ mode ("Watched person appears" or "Someone else appears"), or use
   (`0`, `1`, `2`) on connect/reconnect.
 - `data/` (trained faces and model) is excluded from version control by
   design; each installation builds its own local roster of named people.
-- Notifications are Windows-only (they no-op elsewhere); everything else
-  runs cross-platform.
+- Notifications silently no-op if the platform's notifier isn't available
+  (e.g. a minimal Linux install without `notify-send`) rather than
+  erroring — the rest of the app is unaffected.
