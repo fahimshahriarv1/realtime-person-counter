@@ -24,11 +24,11 @@ even across app restarts.
   index), the app shows a status placeholder and retries every couple of
   seconds instead of crashing — same recovery path if the camera drops out
   mid-session. There's also a manual "Retry camera now" button.
-- **Notifications**: a native desktop notification can fire when one or
-  more specific "watched" people enter the room, or when anyone *not* in
-  that list enters (an intruder-style alert) — pick any number of known
-  people from a multi-select list. Cross-platform with no extra pip
-  package — each OS's own notifier is used directly: Windows' toast API via
+- **Notifications**: a native desktop notification can fire either way
+  around a multi-select list of known people — "only selected people
+  notify" (a whitelist) or "everyone except selected people notifies" (a
+  blocklist, e.g. an intruder-style alert). Cross-platform with no extra
+  pip package — each OS's own notifier is used directly: Windows' toast API via
   a bundled PowerShell script (`assets/toast.ps1`), macOS's `osascript`,
   and Linux's `notify-send` (from libnotify, present on most desktop
   environments). This avoids depending on a notification library that
@@ -73,10 +73,14 @@ popup asks for their name — type it and press OK. That person is now
 remembered (face images + trained model are stored under `data/`, which is
 git-ignored since it's personal biometric data specific to your machine).
 
-In the side panel, Ctrl/Shift-click to pick one or more **Watched
-person(s)** and choose an **Alert me when** mode ("Watched person(s)
-appear" or "Anyone not watched appears"), or use "Send test notification"
-to confirm toasts are showing up on your machine.
+In the side panel, Ctrl/Shift-click to pick one or more people under
+**Select people**, then choose an **Alert me when** mode:
+- **Only selected people notify** — a whitelist; everyone else is silent.
+- **Everyone except selected people notifies** — a blocklist; the people
+  you pick are exempt, anyone else (including unrecognized faces) alerts.
+
+Use "Send test notification" any time to confirm toasts are showing up on
+your machine.
 
 ## Notes & limitations
 
