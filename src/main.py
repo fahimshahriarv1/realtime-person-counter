@@ -42,8 +42,8 @@ READ_FAILURE_TOLERANCE = 8         # consecutive bad reads before declaring "dis
 PLACEHOLDER_SIZE = (860, 540)
 
 ALERT_OFF = "Off"
-ALERT_WATCHED_ARRIVES = "Watched person(s) appear"
-ALERT_OTHER_ARRIVES = "Anyone not watched appears"
+ALERT_WATCHED_ARRIVES = "Only selected people notify"
+ALERT_OTHER_ARRIVES = "Everyone except selected people notifies"
 ALERT_MODES = [ALERT_OFF, ALERT_WATCHED_ARRIVES, ALERT_OTHER_ARRIVES]
 
 
@@ -159,7 +159,7 @@ class PersonCounterApp:
         notif_frame = ttk.LabelFrame(side, text="Notifications", padding=8)
         notif_frame.pack(fill=tk.X, pady=(0, 8))
 
-        ttk.Label(notif_frame, text="Watched person(s):").pack(anchor="w")
+        ttk.Label(notif_frame, text="Select people:").pack(anchor="w")
         self.watched_listbox = tk.Listbox(
             notif_frame, selectmode=tk.EXTENDED, exportselection=False, height=5
         )
