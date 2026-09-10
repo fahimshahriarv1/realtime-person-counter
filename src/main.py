@@ -185,8 +185,106 @@ class PersonCounterApp:
             notif_frame, text="Send test notification", command=self.send_test_notification
         ).pack(fill=tk.X)
 
+        self._build_tuning_frame(side)
+
         self._refresh_watched_person_options()
         self._show_placeholder("Connecting to camera...")
+
+    def _build_tuning_frame(self, parent):
+        self._tuning_widgets = []
+
+        frame = ttk.LabelFrame(parent, text="Detection & Recognition Tuning", padding=8)
+        frame.pack(fill=tk.X, pady=(0, 8))
+
+        self._add_tuning_slider(
+            frame,
+            "min_neighbors",
+            "Detection strictness",
+            "Higher = fewer non-face objects mistaken for a person; too high can miss angled faces.",
+            3,
+            12,
+        )
+        self._add_tuning_slider(
+            frame,
+            "min_size",
+            "Minimum face size (px)",
+            "Higher = ignore small/distant blobs, a common source of false detections.",
+            20,
+            200,
+        )
+        self._add_tuning_slider(
+            frame,
+            "confidence_threshold",
+            "Recognition strictness",
+            "Lower = stricter name matching (fewer mix-ups between people), but may misjudge a known face as unrecognized.",
+            30,
+            150,
+        )
+        self._add_tuning_slider(
+            frame,
+            "scale_factor",
+            "Detection scan detail",
+            "Lower = finer-grained scanning (catches more faces, slower, slightly more false positives).",
+            1.05,
+            1.5,
+            is_float=True,
+        )
+
+        ttk.Button(frame, text="Reset to defaults", command=self._reset_tuning).pack(
+            fill=tk.X, pady=(6, 0)
+        )
+
+        return frame
+
+    def _format_tuning_value(self, value, is_float):
+        return f"{value:.2f}" if is_float else str(int(round(value)))
+
+    def _add_tuning_slider(self, parent, attr_name, title, hint, frm, to, is_float=False):
+        current = getattr(self.engine, attr_name)
+
+        row = ttk.Frame(parent)
+        row.pack(fill=tk.X, pady=(6, 0))
+
+        header = ttk.Frame(row)
+        header.pack(fill=tk.X)
+        ttk.Label(header, text=title, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
+        value_var = tk.StringVar(value=self._format_tuning_value(current, is_float))
+        ttk.Label(header, textvariable=value_var, foreground="#555555").pack(side=tk.RIGHT)
+
+        def coerce(raw):
+            v = float(raw)
+            return v if is_float else int(round(v))
+
+        def on_move(raw):
+            value = coerce(raw)
+            value_var.set(self._format_tuning_value(value, is_float))
+            setattr(self.engine, attr_name, value)
+
+        def on_release(_event):
+            self.engine.update_tuning(**{attr_name: getattr(self.engine, attr_name)})
+
+        scale = ttk.Scale(row, from_=frm, to=to, orient=tk.HORIZONTAL, command=on_move)
+        scale.set(current)
+        scale.pack(fill=tk.X)
+        scale.bind("<ButtonRelease-1>", on_release)
+
+        ttk.Label(
+            row,
+            text=hint,
+            foreground="#777777",
+            font=("Segoe UI", 8),
+            wraplength=220,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 2))
+
+        self._tuning_widgets.append((scale, value_var, attr_name, is_float))
+
+    def _reset_tuning(self):
+        self.engine.reset_tuning()
+        for scale, value_var, attr_name, is_float in self._tuning_widgets:
+            value = getattr(self.engine, attr_name)
+            scale.set(value)
+            value_var.set(self._format_tuning_value(value, is_float))
 
     def _show_placeholder(self, message):
         img = Image.new("RGB", PLACEHOLDER_SIZE, color=(32, 32, 32))
