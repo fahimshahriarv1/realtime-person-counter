@@ -21,7 +21,28 @@ import cv2
 import numpy as np
 
 FACE_SIZE = (200, 200)
-CONFIDENCE_THRESHOLD = 75  # LBPH distance; lower = more confident match
+
+# Tuning defaults, all overridable at runtime via update_tuning() and
+# persisted to data/settings.json:
+#   scale_factor       Haar pyramid step. Closer to 1.0 = finer-grained
+#                       scanning (catches more faces, slower, more false
+#                       positives). Must be > 1.0.
+#   min_neighbors       How many overlapping candidate detections Haar
+#                       requires before accepting one as a face. Higher =
+#                       fewer false positives (non-faces mistaken for
+#                       faces), but can start missing real faces at odd
+#                       angles.
+#   min_size            Smallest detection (px) to accept. Raising this
+#                       filters out small/distant blobs that are a common
+#                       source of false positives.
+#   confidence_threshold LBPH match distance ceiling; lower = stricter
+#                       recognition (less likely to misidentify one person
+#                       as another, but more likely to call a known person
+#                       "unrecognized").
+DEFAULT_SCALE_FACTOR = 1.1
+DEFAULT_MIN_NEIGHBORS = 5
+DEFAULT_MIN_SIZE = 60
+DEFAULT_CONFIDENCE_THRESHOLD = 75
 
 
 class FaceEngine:
@@ -30,6 +51,7 @@ class FaceEngine:
         self.faces_dir = os.path.join(data_dir, "faces")
         self.labels_path = os.path.join(data_dir, "labels.json")
         self.model_path = os.path.join(data_dir, "model.yml")
+        self.settings_path = os.path.join(data_dir, "settings.json")
 
         os.makedirs(self.faces_dir, exist_ok=True)
 
@@ -45,6 +67,8 @@ class FaceEngine:
             self.recognizer.read(self.model_path)
             self.trained = True
 
+        self._load_tuning()
+
     def _load_labels(self):
         if os.path.exists(self.labels_path):
             with open(self.labels_path, "r", encoding="utf-8") as f:
@@ -55,11 +79,61 @@ class FaceEngine:
         with open(self.labels_path, "w", encoding="utf-8") as f:
             json.dump({str(k): v for k, v in self.labels.items()}, f, indent=2)
 
+    def _load_tuning(self):
+        settings = {}
+        if os.path.exists(self.settings_path):
+            with open(self.settings_path, "r", encoding="utf-8") as f:
+                settings = json.load(f)
+        self.scale_factor = settings.get("scale_factor", DEFAULT_SCALE_FACTOR)
+        self.min_neighbors = settings.get("min_neighbors", DEFAULT_MIN_NEIGHBORS)
+        self.min_size = settings.get("min_size", DEFAULT_MIN_SIZE)
+        self.confidence_threshold = settings.get(
+            "confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD
+        )
+
+    def _save_tuning(self):
+        with open(self.settings_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "scale_factor": self.scale_factor,
+                    "min_neighbors": self.min_neighbors,
+                    "min_size": self.min_size,
+                    "confidence_threshold": self.confidence_threshold,
+                },
+                f,
+                indent=2,
+            )
+
+    def update_tuning(
+        self, scale_factor=None, min_neighbors=None, min_size=None, confidence_threshold=None
+    ):
+        """Apply any given tuning values immediately and persist them.
+        Omitted (None) values are left unchanged."""
+        if scale_factor is not None:
+            self.scale_factor = scale_factor
+        if min_neighbors is not None:
+            self.min_neighbors = min_neighbors
+        if min_size is not None:
+            self.min_size = min_size
+        if confidence_threshold is not None:
+            self.confidence_threshold = confidence_threshold
+        self._save_tuning()
+
+    def reset_tuning(self):
+        self.scale_factor = DEFAULT_SCALE_FACTOR
+        self.min_neighbors = DEFAULT_MIN_NEIGHBORS
+        self.min_size = DEFAULT_MIN_SIZE
+        self.confidence_threshold = DEFAULT_CONFIDENCE_THRESHOLD
+        self._save_tuning()
+
     def detect_faces(self, gray_frame):
         """Returns list of (x, y, w, h)."""
         return list(
             self.detector.detectMultiScale(
-                gray_frame, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+                gray_frame,
+                scaleFactor=self.scale_factor,
+                minNeighbors=self.min_neighbors,
+                minSize=(self.min_size, self.min_size),
             )
         )
 
@@ -70,7 +144,7 @@ class FaceEngine:
             return None, None
         face = cv2.resize(face_gray, FACE_SIZE)
         label_id, confidence = self.recognizer.predict(face)
-        if confidence <= CONFIDENCE_THRESHOLD and label_id in self.labels:
+        if confidence <= self.confidence_threshold and label_id in self.labels:
             return self.labels[label_id], confidence
         return None, confidence
 
