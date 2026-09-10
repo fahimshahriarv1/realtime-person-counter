@@ -38,14 +38,34 @@ even across app restarts.
 
 ```
 python -m venv .venv
-.venv\Scripts\activate       # Windows; use `source .venv/bin/activate` on macOS/Linux
+```
+
+**Windows (PowerShell):**
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+PowerShell's default execution policy blocks `.venv\Scripts\activate`
+(you'll see a `running scripts is disabled on this system` error), so the
+command above calls the venv's `python.exe` directly instead — no policy
+change needed. If you'd rather use plain `python`/`pip` with an activated
+prompt, allow scripts for just this session first:
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**macOS/Linux:**
+```bash
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ## Run
 
 ```
-python src/main.py
+.venv\Scripts\python.exe src\main.py   # Windows, matching the Setup step above
+python src/main.py                      # if you activated the venv, or on macOS/Linux
 ```
 
 A webcam window opens. When a new face is detected and holds steady, a
