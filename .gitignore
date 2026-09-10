@@ -4,3 +4,4 @@ __pycache__/
 data/faces/
 data/labels.json
 data/model.yml
+data/settings.json
