@@ -6,6 +6,11 @@ in view. The first time a face is seen it's "Unidentified" for a brief
 moment; once detection is stable you're prompted to type a name for it,
 which trains the recognizer so that person is remembered on future runs.
 
+The app tolerates a missing/disconnected camera: on startup it searches a
+few device indices and keeps retrying on a timer until one responds, and
+if the camera drops out mid-session it falls back to the same reconnect
+loop instead of crashing.
+
 Run with:  python src/main.py
 """
 
@@ -13,10 +18,10 @@ import os
 import sys
 import tkinter as tk
 from collections import deque
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import simpledialog, ttk
 
 import cv2
-from PIL import Image, ImageTk
+from PIL import Image, ImageDraw, ImageTk
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from face_engine import FaceEngine  # noqa: E402
@@ -29,6 +34,11 @@ CASCADE_PATH = os.path.join(BASE_DIR, "assets", "haarcascade_frontalface_default
 FRAME_INTERVAL_MS = 30
 STABILITY_FRAMES = 10   # consecutive "unknown" frames before we prompt for a name
 BUFFER_SIZE = 8         # face crops saved per new person for training
+
+CAMERA_INDICES_TO_TRY = [0, 1, 2]  # tried in order on every (re)connect attempt
+CAMERA_RETRY_MS = 2000             # how often to retry when no camera is connected
+READ_FAILURE_TOLERANCE = 8         # consecutive bad reads before declaring "disconnected"
+PLACEHOLDER_SIZE = (860, 540)
 
 
 class TrackState:
@@ -52,13 +62,13 @@ class PersonCounterApp:
         self.tracker = CentroidTracker()
         self.track_state = {}
 
-        self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW if os.name == "nt" else 0)
-        if not self.cap.isOpened():
-            messagebox.showerror("Camera error", "Could not open a webcam (device 0).")
-            self.root.after(100, self.root.destroy)
-            return
+        self.cap = None
+        self.camera_index = None
+        self.read_failures = 0
+        self.reconnect_elapsed_ms = 0
 
         self._build_ui()
+        self.attempt_connect(reset_status_on_fail=True)
         self.root.after(FRAME_INTERVAL_MS, self.update_frame)
 
     def _build_ui(self):
@@ -73,6 +83,16 @@ class PersonCounterApp:
         side = ttk.Frame(main, width=260, padding=(12, 0, 0, 0))
         side.pack(side=tk.RIGHT, fill=tk.Y)
 
+        self.status_var = tk.StringVar(value="Connecting to camera...")
+        self.status_label = ttk.Label(
+            side, textvariable=self.status_var, font=("Segoe UI", 9), foreground="#b36b00"
+        )
+        self.status_label.pack(anchor="w", pady=(0, 8))
+
+        ttk.Button(side, text="Retry camera now", command=self.retry_now).pack(
+            anchor="w", pady=(0, 12)
+        )
+
         ttk.Label(side, text="People in room", font=("Segoe UI", 12, "bold")).pack(
             anchor="w", pady=(0, 4)
         )
@@ -84,7 +104,7 @@ class PersonCounterApp:
         ttk.Label(side, text="Currently visible:", font=("Segoe UI", 10, "bold")).pack(
             anchor="w"
         )
-        self.people_list = tk.Listbox(side, height=18, font=("Segoe UI", 10))
+        self.people_list = tk.Listbox(side, height=16, font=("Segoe UI", 10))
         self.people_list.pack(fill=tk.BOTH, expand=True, pady=(4, 8))
 
         ttk.Label(
@@ -95,6 +115,57 @@ class PersonCounterApp:
             wraplength=240,
             justify="left",
         ).pack(anchor="w")
+
+        self._show_placeholder("Connecting to camera...")
+
+    def _show_placeholder(self, message):
+        img = Image.new("RGB", PLACEHOLDER_SIZE, color=(32, 32, 32))
+        draw = ImageDraw.Draw(img)
+        text = f"\U0001F4F7  {message}"
+        bbox = draw.textbbox((0, 0), text)
+        w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(
+            ((PLACEHOLDER_SIZE[0] - w) / 2, (PLACEHOLDER_SIZE[1] - h) / 2),
+            text,
+            fill=(200, 200, 200),
+        )
+        imgtk = ImageTk.PhotoImage(image=img)
+        self.video_label.imgtk = imgtk
+        self.video_label.configure(image=imgtk)
+
+    def _set_status(self, text, ok):
+        self.status_var.set(text)
+        self.status_label.configure(foreground="#1a7f37" if ok else "#c0392b")
+
+    def retry_now(self):
+        self.reconnect_elapsed_ms = 0
+        self.attempt_connect(reset_status_on_fail=True)
+
+    def attempt_connect(self, reset_status_on_fail=False):
+        """Try each known camera index once. Returns True on success."""
+        for idx in CAMERA_INDICES_TO_TRY:
+            cap = None
+            try:
+                cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW if os.name == "nt" else 0)
+                if cap.isOpened():
+                    ret, _ = cap.read()
+                    if ret:
+                        self.cap = cap
+                        self.camera_index = idx
+                        self.read_failures = 0
+                        self._set_status(f"Camera connected (device {idx})", ok=True)
+                        return True
+                if cap is not None:
+                    cap.release()
+            except cv2.error:
+                if cap is not None:
+                    cap.release()
+
+        self.cap = None
+        if reset_status_on_fail:
+            self._set_status("No camera found. Retrying...", ok=False)
+            self._show_placeholder("No camera found. Retrying...")
+        return False
 
     def prompt_for_name(self, state):
         name = simpledialog.askstring(
@@ -110,10 +181,35 @@ class PersonCounterApp:
         state.buffer.clear()
 
     def update_frame(self):
-        ret, frame = self.cap.read()
-        if not ret:
+        if self.cap is None:
+            self.reconnect_elapsed_ms += FRAME_INTERVAL_MS
+            if self.reconnect_elapsed_ms >= CAMERA_RETRY_MS:
+                self.reconnect_elapsed_ms = 0
+                self.attempt_connect(reset_status_on_fail=True)
+            self.count_var.set("0")
+            self.people_list.delete(0, tk.END)
             self.root.after(FRAME_INTERVAL_MS, self.update_frame)
             return
+
+        ret, frame = None, None
+        try:
+            ret, frame = self.cap.read()
+        except cv2.error:
+            ret = False
+
+        if not ret or frame is None:
+            self.read_failures += 1
+            if self.read_failures >= READ_FAILURE_TOLERANCE:
+                self.cap.release()
+                self.cap = None
+                self.read_failures = 0
+                self.reconnect_elapsed_ms = 0
+                self._set_status("Camera disconnected. Reconnecting...", ok=False)
+                self._show_placeholder("Camera disconnected. Reconnecting...")
+            self.root.after(FRAME_INTERVAL_MS, self.update_frame)
+            return
+
+        self.read_failures = 0
 
         frame = cv2.flip(frame, 1)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -125,7 +221,6 @@ class PersonCounterApp:
             if tid not in tracked:
                 del self.track_state[tid]
 
-        current_names = []
         for tid, (x, y, w, h) in tracked.items():
             state = self.track_state.setdefault(tid, TrackState())
             crop = gray[y : y + h, x : x + w]
@@ -144,7 +239,6 @@ class PersonCounterApp:
             if state.name:
                 label = state.name
                 color = (60, 180, 75)
-                current_names.append(state.name)
             elif state.skipped:
                 label = "Unnamed"
                 color = (150, 150, 150)
