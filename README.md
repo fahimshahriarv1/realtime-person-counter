@@ -39,6 +39,13 @@ even across app restarts.
   Tuning below). Changes apply immediately and persist across restarts
   (`data/settings.json`); a "Reset to defaults" button is included.
 
+## Quickest way to run it (Windows)
+
+Double-click **`run.bat`**. The first launch creates the virtual environment
+and installs dependencies automatically (takes a minute or two); every
+launch after that starts the app straight away. If it exits with an error,
+the window stays open so you can read it.
+
 ## Setup
 
 ```
