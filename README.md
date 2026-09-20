@@ -18,6 +18,10 @@ even across app restarts.
   the detection has been stable for about a third of a second, a dialog
   pops up asking for a name. Enter one and the recognizer is trained on
   the spot; skip it and that face is labeled "Unnamed" for the session.
+  An "Ask for a name when a new person is detected" toggle turns this
+  off — with it unchecked, new faces are silently auto-registered as
+  "Person N" (still trained and recognized from then on) instead of
+  interrupting you with a dialog.
 - **GUI**: Tkinter, showing the live annotated video feed, a running count
   of people currently visible, and a list of who's currently in frame.
 - **Camera failsafe**: if no webcam is found (or it's a different device
