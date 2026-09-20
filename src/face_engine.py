@@ -39,10 +39,14 @@ FACE_SIZE = (200, 200)
 #                       recognition (less likely to misidentify one person
 #                       as another, but more likely to call a known person
 #                       "unrecognized").
+#   ask_for_name        Whether a newly detected, unrecognized person
+#                       should be prompted for a name (True) or silently
+#                       auto-registered as "Person N" (False).
 DEFAULT_SCALE_FACTOR = 1.1
 DEFAULT_MIN_NEIGHBORS = 5
 DEFAULT_MIN_SIZE = 60
 DEFAULT_CONFIDENCE_THRESHOLD = 75
+DEFAULT_ASK_FOR_NAME = True
 
 
 class FaceEngine:
@@ -90,6 +94,7 @@ class FaceEngine:
         self.confidence_threshold = settings.get(
             "confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD
         )
+        self.ask_for_name = settings.get("ask_for_name", DEFAULT_ASK_FOR_NAME)
 
     def _save_tuning(self):
         with open(self.settings_path, "w", encoding="utf-8") as f:
@@ -99,6 +104,7 @@ class FaceEngine:
                     "min_neighbors": self.min_neighbors,
                     "min_size": self.min_size,
                     "confidence_threshold": self.confidence_threshold,
+                    "ask_for_name": self.ask_for_name,
                 },
                 f,
                 indent=2,
@@ -124,6 +130,13 @@ class FaceEngine:
         self.min_neighbors = DEFAULT_MIN_NEIGHBORS
         self.min_size = DEFAULT_MIN_SIZE
         self.confidence_threshold = DEFAULT_CONFIDENCE_THRESHOLD
+        self._save_tuning()
+
+    def set_ask_for_name(self, value):
+        """Toggle whether a newly detected, unrecognized person should be
+        interactively named (True) or auto-registered with a generated
+        'Person N' name (False). Persisted immediately."""
+        self.ask_for_name = bool(value)
         self._save_tuning()
 
     def detect_faces(self, gray_frame):
@@ -175,6 +188,15 @@ class FaceEngine:
 
         self._save_labels()
         self.retrain()
+
+    def add_unnamed_person(self, face_crops_gray):
+        """Like add_person(), but generates a 'Person N' name instead of
+        taking one interactively -- used when ask_for_name is off. Returns
+        the generated name."""
+        next_id = max(self.labels.keys(), default=-1) + 1
+        name = f"Person {next_id}"
+        self.add_person(name, face_crops_gray)
+        return name
 
     def retrain(self):
         """Rebuild the recognizer from every stored training image on disk.
