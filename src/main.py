@@ -147,10 +147,18 @@ class PersonCounterApp:
         self.people_list = tk.Listbox(side, height=16, font=("Segoe UI", 10))
         self.people_list.pack(fill=tk.BOTH, expand=True, pady=(4, 8))
 
+        self.ask_for_name_var = tk.BooleanVar(value=self.engine.ask_for_name)
+        ttk.Checkbutton(
+            side,
+            text="Ask for a name when a new person is detected",
+            variable=self.ask_for_name_var,
+            command=self._on_ask_for_name_toggle,
+        ).pack(anchor="w", pady=(0, 2))
         ttk.Label(
             side,
-            text="New faces are prompted for a name automatically\n"
-            "once detection is stable.",
+            text="On: a dialog asks you to name each new face once "
+            "detection is stable.\nOff: new faces are auto-labeled "
+            '"Person N" with no prompt.',
             foreground="#555555",
             wraplength=240,
             justify="left",
@@ -309,6 +317,9 @@ class PersonCounterApp:
         self.reconnect_elapsed_ms = 0
         self.attempt_connect(reset_status_on_fail=True)
 
+    def _on_ask_for_name_toggle(self):
+        self.engine.set_ask_for_name(self.ask_for_name_var.get())
+
     def _refresh_watched_person_options(self):
         previously_selected = set(self._get_watched_names())
         names = sorted(set(self.engine.labels.values()))
@@ -385,6 +396,17 @@ class PersonCounterApp:
             state.skipped = True
         state.buffer.clear()
 
+    def resolve_new_person(self, state):
+        """Called once a track has held steady as 'unknown' long enough to
+        act on. Either prompts for a name or auto-registers one, depending
+        on the ask-for-name toggle."""
+        if self.ask_for_name_var.get():
+            self.prompt_for_name(state)
+        else:
+            state.name = self.engine.add_unnamed_person(list(state.buffer))
+            state.buffer.clear()
+            self._refresh_watched_person_options()
+
     def update_frame(self):
         if self.cap is None:
             self.reconnect_elapsed_ms += FRAME_INTERVAL_MS
@@ -439,7 +461,7 @@ class PersonCounterApp:
                     state.unknown_frames += 1
                     if state.unknown_frames >= STABILITY_FRAMES and not state.prompted:
                         state.prompted = True
-                        self.prompt_for_name(state)
+                        self.resolve_new_person(state)
 
             if state.name or state.skipped:
                 self.maybe_notify(state)
